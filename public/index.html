@@ -1,70 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title id="tab-title">Clever | Log in</title>
-    <link id="tab-icon" rel="icon" type="image/x-icon" href="https://assets.clever.com/launchpad/2a860877d/favicon.ico?1">
-    
-    <script src="uv/uv.bundle.js" defer></script>
-    <script src="uv/uv.config.js" defer></script>
-
-    <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
-        #home { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; position: relative; z-index: 10; }
-        #logo { cursor: pointer; max-width: 400px; transition: 0.2s; }
-        .btn { background: #111; color: #fff; border: 1px solid #333; padding: 12px 24px; cursor: pointer; border-radius: 6px; font-weight: bold; font-size: 13px; }
-        .btn:hover { background: #fff; color: #000; }
-        
-        /* Search Overlay */
-        #search-box { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 100; flex-direction: column; align-items: center; justify-content: center; }
-        input { width: 55%; padding: 20px; border-radius: 40px; border: 1px solid #222; background: #050505; color: #fff; font-size: 18px; outline: none; text-align: center; }
-        
-        /* Icons with Solid White Backgrounds */
-        .icon-circle { background: #fff !important; padding: 15px; border-radius: 50%; margin-bottom: 25px; display: flex; align-items: center; justify-content: center; width: 85px; height: 85px; }
-        .name-holder { margin-top: 35px; background: #fff !important; padding: 10px 25px; border-radius: 6px; }
-
-        /* Settings */
-        #settings-panel { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #0a0a0a; padding: 30px; border: 1px solid #222; border-radius: 12px; z-index: 200; width: 350px; }
-        .field { margin-bottom: 18px; }
-        .field label { display: block; font-size: 10px; color: #666; margin-bottom: 6px; text-transform: uppercase; }
-        .field input { width: 93%; padding: 12px; background: #000; border: 1px solid #222; color: #fff; border-radius: 6px; }
-
-        #panic-screen { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; z-index: 99999; }
-        #engine-ifr { width: 100%; height: 100%; border: none; display: none; position: absolute; top: 0; left: 0; z-index: 5; }
-    </style>
-</head>
-<body>
-
-<div id="panic-screen"></div>
-<iframe id="engine-ifr"></iframe>
-
-<div id="home">
-    <div style="position: absolute; top: 25px; left: 25px;"><button class="btn" onclick="openSearch('global')">GLOBAL SEARCH</button></div>
-    <div style="position: absolute; top: 25px; right: 25px;"><button class="btn" onclick="toggleSettings()">⚙ SETTINGS</button></div>
-    <img src="https://i.ibb.co/VW0TsZvf/Shadow-DRS-logo.png" id="logo" onclick="openSearch('drs')">
-</div>
-
-<div id="search-box">
-    <div class="icon-circle"><img id="mode-icon" src="" style="height:55px;"></div>
-    <h2 id="mode-text" style="margin-bottom:20px; font-size:11px; color:#555; letter-spacing:4px; text-transform: uppercase;"></h2>
-    <input type="text" id="user-input" placeholder="Type URL or search terms...">
-    <div style="margin-top: 35px;">
-        <button class="btn" onclick="launch()" style="padding: 15px 60px; font-size: 15px;">INITIALIZE</button>
-    </div>
-    <div class="name-holder"><img src="https://i.ibb.co/4ZMPS8Vx/Shadow-DRS-name-1.png" style="height:25px;"></div>
-    <button onclick="closeSearch()" style="margin-top:50px; background:none; border:none; color:#333; cursor:pointer;">[ BACK ]</button>
-</div>
-
-<div id="settings-panel">
-    <h3 style="margin-top:0; color:#fff; border-bottom:1px solid #222; padding-bottom:15px;">DASHBOARD CONFIG</h3>
-    <div class="field"><label>Fake Tab Title</label><input type="text" id="set-title" value="Clever | Log in"></div>
-    <div class="field"><label>Panic Key</label><input type="text" id="set-key" value="`" maxlength="1"></div>
-    <div class="field"><label>Panic URL</label><input type="text" id="set-purl" value="https://clever.com/"></div>
-    <button class="btn" onclick="saveSettings()" style="width:100%; background:#fff; color:#000;">APPLY</button>
-</div>
-
 <script>
     let currentMode = 'global';
+
+    // 1. FORCED ENGINE REGISTRATION
+    async function registerSW() {
+        if ('serviceWorker' in navigator) {
+            try {
+                // We use the absolute path to ensure the worker finds the config
+                await navigator.serviceWorker.register('./uv.sw.js', {
+                    scope: __uv$config.prefix
+                });
+                console.log("Shadow DRS: Engine Synchronized");
+            } catch (err) {
+                console.error("Shadow DRS: Registration failed", err);
+            }
+        }
+    }
+
+    // Call on load
+    registerSW();
 
     function toggleSettings() {
         const p = document.getElementById('settings-panel').style;
@@ -99,36 +52,38 @@
         const val = document.getElementById('user-input').value;
         if (!val) return;
 
-        // Auto-correct URL or Search
         let url = val.trim();
+        // Check if it's a URL or a search query
         if (!url.includes('.') || url.includes(' ')) {
-            url = (currentMode === 'drs' ? 'https://duckduckgo.com/?q=' : 'https://www.google.com/search?q=') + encodeURIComponent(url);
+            // Use DuckDuckGo if Google throws 500 errors
+            let engine = (currentMode === 'drs') ? 'https://duckduckgo.com/?q=' : 'https://www.google.com/search?q=';
+            url = engine + encodeURIComponent(url);
         } else if (!url.startsWith('http')) {
             url = 'https://' + url;
         }
 
-        // REGISTER SERVICE WORKER (The UV Heartbeat)
-        if ('serviceWorker' in navigator) {
-            try {
-                // This uses the built-in __uv$config from the fork
-                const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(url);
-                
-                document.getElementById('home').style.display = 'none';
-                document.getElementById('search-box').style.display = 'none';
-                
-                const frame = document.getElementById('engine-ifr');
-                frame.style.display = 'block';
-                frame.src = encodedUrl;
-            } catch (err) {
-                alert("Shadow DRS: Connection failed. Make sure you are visiting your Koyeb site directly.");
-            }
+        // REGISTER AGAIN RIGHT BEFORE LAUNCH TO BE SAFE
+        await registerSW();
+
+        try {
+            const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(url);
+            
+            document.getElementById('home').style.display = 'none';
+            document.getElementById('search-box').style.display = 'none';
+            
+            const frame = document.getElementById('engine-ifr');
+            frame.style.display = 'block';
+            frame.src = encodedUrl;
+        } catch (e) {
+            alert("Encoding Error: Try clearing your browser cache.");
         }
     }
 
     window.addEventListener('keydown', (e) => {
-        if(e.key === document.getElementById('set-key').value) {
+        const pKey = document.getElementById('set-key').value || '`';
+        if(e.key === pKey) {
             document.getElementById('panic-screen').style.display = 'block';
-            window.location.href = document.getElementById('set-purl').value;
+            window.location.href = document.getElementById('set-purl').value || "https://clever.com/";
         }
     });
 
@@ -136,5 +91,3 @@
         if (e.key === 'Enter') launch();
     });
 </script>
-</body>
-</html>
